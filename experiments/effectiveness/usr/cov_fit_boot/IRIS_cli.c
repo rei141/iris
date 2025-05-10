@@ -166,7 +166,7 @@ int main(int argc, char * argv[]) {
     }
 
     if (argc > 5) {
-      sprintf(cov_name, "%s", argv[5]); // Use the seed file name specified in the argument
+      sprintf(cov_name, "%s", argv[6]); // Use the seed file name specified in the argument
     } else {
       sprintf(cov_name, "cov"); // Default value
     }
