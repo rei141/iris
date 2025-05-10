@@ -151,7 +151,7 @@ int main(int argc, char * argv[]) {
     bool first_iter = true;
     struct timespec tim, tim2;
     tim.tv_sec = 0;
-    tim.tv_nsec = 1 L;
+    tim.tv_nsec = 1L;
 
     // Inital setup for the test VM
     xc_vmcs_fuzzing(pxch, 0, VMCS_DEBUG_MODE_DISABLE, 0, NULL);
