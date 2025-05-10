@@ -160,9 +160,9 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
 
     if (argc > 5) {
-      cov_name = argv[5]; // Use the seed file name specified in the argument
+      sprintf(file_name, "%s", argv[5]); // Use the seed file name specified in the argument
     } else {
-      cov_name = "cov"; // Default value
+      sprintf(file_name, "./seeds"); // Default value
     }
     sprintf(cmd, "mkdir -p %s", cov_name);
     system(cmd);
@@ -242,9 +242,9 @@ int main(int argc, char * argv[]) {
     /***************************************** START BOOT MONITORING ***************************************/
     // Open seeds file once and use in append mode
     if (argc > 5) {
-      file_name = argv[5]; // Use the seed file name specified in the argument
+      sprintf(file_name, "", argv[5]); // Use the seed file name specified in the argument
     } else {
-      file_name = "./seeds"; // Default value
+      sprintf(file_name, "./seeds"); // Default value
     }
     if ((fp = fopen(file_name, "a")) == NULL) return -1;
 
@@ -349,15 +349,15 @@ int main(int argc, char * argv[]) {
     char cmd[100]; // Enough buffer in fixed size
     // 引数でseed名を指定できるようにする
     if (argc > 4) {
-      file_name = argv[4]; // 引数で指定されたシードファイル名を使用
+      sprintf(file_name, "%s", argv[4]); // Use the seed file name specified in the argument
     } else {
-      file_name = "./seeds"; // デフォルト値
+      sprintf(file_name, "./seeds"); // Default value
     }
     // cov_name
     if (argc > 5) {
-      cov_name = argv[5]; // 引数で指定されたカバレッジファイル名を使用
+      sprintf(cov_name, "%s", argv[5]); // Use the seed file name specified in the argument
     } else {
-      cov_name = "cov"; // デフォルト値
+      sprintf(cov_name, "cov"); // Default value
     }
     // make cov dir
     sprintf(cmd, "mkdir -p %s", cov_name);
