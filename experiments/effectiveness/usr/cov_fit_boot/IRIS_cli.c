@@ -166,7 +166,7 @@ int main(int argc, char * argv[]) {
     int count = 0;
     // バッファの効率的な再利用
     uint64_t *buffer_bios = NULL;
-    buffer_bisos = malloc(buffer_size);
+    buffer_bios = malloc(buffer_size);
     for (int i = 0; i < BIOS_EXIT; i++) {
       count = i + 1;
 
