@@ -160,9 +160,15 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
 
     if (argc > 5) {
-      sprintf(file_name, "%s", argv[5]); // Use the seed file name specified in the argument
+      sprintf(file_name, "", argv[5]); // Use the seed file name specified in the argument
     } else {
       sprintf(file_name, "./seeds"); // Default value
+    }
+
+    if (argc > 5) {
+      sprintf(cov_name, "%s", argv[5]); // Use the seed file name specified in the argument
+    } else {
+      sprintf(cov_name, "cov"); // Default value
     }
     sprintf(cmd, "mkdir -p %s", cov_name);
     system(cmd);
@@ -241,11 +247,7 @@ int main(int argc, char * argv[]) {
 
     /***************************************** START BOOT MONITORING ***************************************/
     // Open seeds file once and use in append mode
-    if (argc > 5) {
-      sprintf(file_name, "", argv[5]); // Use the seed file name specified in the argument
-    } else {
-      sprintf(file_name, "./seeds"); // Default value
-    }
+
     if ((fp = fopen(file_name, "a")) == NULL) return -1;
 
     // Pre-calculate buffer size
