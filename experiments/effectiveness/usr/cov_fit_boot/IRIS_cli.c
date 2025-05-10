@@ -158,29 +158,36 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MUTATION_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
 
-    system ("mkdir cov");
+    const char *cov_name;
+    if (argc > 5) {
+      cov_name = argv[5]; // Use the seed file name specified in the argument
+    } else {
+      cov_name = "cov"; // Default value
+    }
+    sprintf(cmd, "mkdir -p %s", cov_name);
+    system(cmd);
 
     /************************ START BIOS MONITORING **********************************/
-    // 定数値の前計算
+    // Pre-calculate constant values
     const size_t buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * 1;
     int count = 0;
-    // バッファの効率的な再利用
+    // Efficient buffer reallocation
     uint64_t *buffer_bios = NULL;
     buffer_bios = malloc(buffer_size);
     for (int i = 0; i < BIOS_EXIT; i++) {
       count = i + 1;
 
-      // 最初のイテレーションだけリセット
+      // Reset only for the first iteration
       if (i == 0) {
         printf("Reset coverage\n");
         system("xencov reset");
       }
 
-      // VM設定は一定なので、ループ外に移動可能
+      // VM settings are constant, can be moved outside the loop
       xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_SET_EXIT_N, 1, NULL);
       xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_SETUP, BUFFER_DIM_FACTOR * 1, NULL);
 
-      // VMの作成は最初の1回だけ
+      // Create VM only for the first time
       if (first_iter) {
         system("xl create ./hvm_configuration.cfg");
         first_iter = false;
@@ -214,7 +221,10 @@ int main(int argc, char * argv[]) {
         free(buffer_bios);
 
         printf("read coverage i: %d\n", count);
-        sprintf(cmd, "xencov read > ./cov/bios_cov%d.dat", count);
+        // sprintf(cmd, "xencov read > ./cov/bios_cov%d.dat", count);
+        // use cov_name
+        sprintf(cmd, "xencov read > %s/bios_cov.dat", cov_name);
+        // sprintf(cmd, "xencov read > ./cov/bios_cov.dat");
         system(cmd);
         break;
       } else {
@@ -230,52 +240,53 @@ int main(int argc, char * argv[]) {
     system(cmd);
 
     /***************************************** START BOOT MONITORING ***************************************/
-    // seeds ファイルを一度だけオープンし、追記モードで使用
-    sprintf(file_name, "./seeds");
+    // Open seeds file once and use in append mode
+    const char *file_name;
+    if (argc > 5) {
+      file_name = argv[5]; // Use the seed file name specified in the argument
+    } else {
+      file_name = "./seeds"; // Default value
+    }
     if ((fp = fopen(file_name, "a")) == NULL) return -1;
 
-    // バッファサイズを事前計算
+    // Pre-calculate buffer size
     const size_t boot_buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * gran_exit;
     uint64_t *buffer = malloc(boot_buffer_size);
 
     for (int i = 0; i < num_exit; i++) {
-      if (i % 100 == 0) {
         printf("Reset coverage\n");
         system("xencov reset");
-      }
 
-      // 設定
+      // Settings
       xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_SET_EXIT_N, gran_exit, NULL);
       xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_SETUP, BUFFER_DIM_FACTOR * gran_exit, NULL);
 
-      // 監視完了を待機
+      // Wait for monitoring to complete
       res = 0;
       while (res != 1) {
         nanosleep(&tim, &tim2);
         res = xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_CHECK, 0, NULL);
       }
 
-      // バッファを再利用（malloc/freeを繰り返さない）
+      // Reuse buffer (avoid malloc/free overhead)
       memset(buffer, 0, boot_buffer_size);
       res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MONITORING_STOP, BUFFER_DIM_FACTOR * gran_exit, buffer);
 
-      // シード書き込み（ファイルは既にオープン済み）
+      // Write seeds (file is already open)
       for (int j = 0; j < res; j++)
         fprintf(fp, "%" PRIx64 "\n", buffer[j]);
 
       printf("Exit recorded: #%d\n", i);
 
-      // ループごとにfcloseしない
 
-      if (i % 100 == 0) {
-        // カバレッジの取得
+        // Get coverage data
         printf("Seed recorded: %d\n", i);
-        sprintf(cmd, "xencov read > ./cov/cov_record%d.dat", i);
+        // use cov_name
+        sprintf(cmd, "xencov read > %s/cov_record%d.dat", cov_name, i);
         system(cmd);
-      }
     }
 
-    // ループ終了後に一度だけclose
+    // Close only once after completing the loop
     fclose(fp);
     free(buffer);
 
@@ -299,7 +310,7 @@ int main(int argc, char * argv[]) {
     int i, j;
 
     if ((fp = fopen(argv[2], "r")) == NULL) {
-      printf("Errore nell'apertura del file'");
+      printf("Error opening file");
       exit(1);
     }
     while (!feof(fp)) {
@@ -336,13 +347,26 @@ int main(int argc, char * argv[]) {
     unsigned int num_seeds = atoi(argv[2]); // Num of seeds to inject
     int dom_id = atoi(argv[3]);
     FILE *fp;
-    char cmd[100]; // 固定サイズで十分なバッファを確保
-    const char *file_name = "./seeds"; // 定数文字列として定義
-
-    // システムコマンド実行前にディレクトリ存在確認
-    if (access("./cov", F_OK) != 0) {
-      system("mkdir -p ./cov");
+    char cmd[100]; // Enough buffer in fixed size
+    // 引数でseed名を指定できるようにする
+    const char *file_name;
+    if (argc > 4) {
+      file_name = argv[4]; // 引数で指定されたシードファイル名を使用
+    } else {
+      file_name = "./seeds"; // デフォルト値
     }
+    // cov_name
+    const char *cov_name;
+    if (argc > 5) {
+      cov_name = argv[5]; // 引数で指定されたカバレッジファイル名を使用
+    } else {
+      cov_name = "cov"; // デフォルト値
+    }
+    // make cov dir
+    sprintf(cmd, "mkdir -p %s", cov_name);
+    system(cmd);
+
+    printf("Using seed file: %s\n", file_name);
 
     // Reading seeds to be injected
     seeds_t seeds_data = {0}; // スタック上に確保し初期化
@@ -352,7 +376,7 @@ int main(int argc, char * argv[]) {
     const size_t buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * num_seeds;
     uint64_t *buffer = malloc(buffer_size);
     if (!buffer) {
-      fprintf(stderr, "メモリ確保エラー\n");
+      fprintf(stderr, "Memory allocation error\n");
       return -1;
     }
     memset(buffer, 0, buffer_size);
@@ -373,17 +397,17 @@ int main(int argc, char * argv[]) {
 
     // Parse raw seeds from file (MUTATION MODE discards vmwrites)
     if (raw_to_seeds(size_buffer, buffer, seeds, MUTATION_MODE) != 0) {
-      fprintf(stderr, "シード解析エラー\n");
+      fprintf(stderr, "Seed parse error\n");
       free(buffer);
       return -1;
     }
 
     if (seeds->size != num_seeds) {
-      printf("警告: 予想したシード数と異なります: %lu vs %u\n", seeds->size, num_seeds);
+      printf("Warning: The number of seeds does not match: %lu vs %u\n", seeds->size, num_seeds);
     }
 
     // Create a test VM in MUTATION MODE from a snapshot
-    printf("VM初期化中...\n");
+    printf("Initializing VM...\n");
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_DEBUG_MODE_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_SETUP, 0, NULL);
@@ -403,12 +427,12 @@ int main(int argc, char * argv[]) {
 
     buffer_inject = malloc(sizeof(uint64_t) * max_buffer_size);
     if (!buffer_inject) {
-      fprintf(stderr, "注入バッファのメモリ確保エラー\n");
+      fprintf(stderr, "Memory allocation error for injection buffer\n");
       free(buffer);
       return -1;
     }
 
-    printf("シード注入開始...\n");
+    printf("Starting seed injection...\n");
     // Foreach seed
     for (int j = 0; j < seeds->size; j++) {
       int dim_buffer = seeds->seeds_items[j].size * 3;
@@ -431,31 +455,28 @@ int main(int argc, char * argv[]) {
 
       // Filter EPT MISCONFIG
       if (exit_reason != 49 && exit_reason != 12) {
-        printf("SEED注入: #%d, シードID #%lu\n", j, seeds->seeds_items[j].id);
+        printf("SEED injection: #%d, Seed ID #%lu\n", j, seeds->seeds_items[j].id);
 
         // Waiting for the pending exit and reset coverage
         while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
           // 短いスリープを追加してCPU使用率を抑える
           usleep(1000); // 1ミリ秒待機
         }
-      if (j % 100 == 0) {
         system("xencov reset");
-      }
         // Seed injection
         res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_MUTATION_START_NEW_ITERATION_NO_BLOCKING,
                              dim_buffer, buffer_inject);
-        printf("変異結果: %d\n", res);
+        printf("Mutation result: %d\n", res);
 
         // Waiting for the end of exit and retrieve coverage
         while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
           usleep(1000);
         }
-      if (j % 100 == 0) {
-        snprintf(cmd, sizeof(cmd), "xencov read > ./cov/cov_replay%d.dat", j);
+        // use cov_name
+        sprintf(cmd, "xencov read > %s/cov_replay%d.dat", cov_name, j);
         system(cmd);
-      }
       } else {
-        printf("SEED破棄: #%d, 理由: %s\n", j, exit_reason_name[exit_reason]);
+        printf("Discarding seed: #%d, Reason: %s\n", j, exit_reason_name[exit_reason]);
       }
     }
 
@@ -467,12 +488,12 @@ int main(int argc, char * argv[]) {
     free(buffer);
     free(buffer_inject);
 
-    printf("変異モード無効化中...\n");
+    printf("Disabling mutation mode...\n");
     // Disable mutation mode
     xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_DISABLE, 0, NULL);
 
     // Destroy the test VM
-    printf("VM終了中...\n");
+    printf("Shutting down VM...\n");
     system("xl destroy hvm_guest");
 
     break;
