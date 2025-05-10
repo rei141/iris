@@ -136,6 +136,8 @@ int raw_to_seeds(int size, uint64_t * buffer, seeds_t * seeds, int mode);
 int main(int argc, char * argv[]) {
   int res = 0;
   xc_interface * pxch = xc_interface_open(NULL, NULL, 0);
+  char file_name[50];
+  char cov_name[50];
 
   switch ( * argv[1]) {
 
@@ -145,7 +147,6 @@ int main(int argc, char * argv[]) {
     int dom_id = atoi(argv[4]);
 
     FILE * fp;
-    char file_name[50];
     char cmd[90];
 
     bool first_iter = true;
@@ -158,7 +159,6 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MUTATION_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
 
-    const char *cov_name;
     if (argc > 5) {
       cov_name = argv[5]; // Use the seed file name specified in the argument
     } else {
@@ -241,7 +241,6 @@ int main(int argc, char * argv[]) {
 
     /***************************************** START BOOT MONITORING ***************************************/
     // Open seeds file once and use in append mode
-    const char *file_name;
     if (argc > 5) {
       file_name = argv[5]; // Use the seed file name specified in the argument
     } else {
@@ -349,14 +348,12 @@ int main(int argc, char * argv[]) {
     FILE *fp;
     char cmd[100]; // Enough buffer in fixed size
     // 引数でseed名を指定できるようにする
-    const char *file_name;
     if (argc > 4) {
       file_name = argv[4]; // 引数で指定されたシードファイル名を使用
     } else {
       file_name = "./seeds"; // デフォルト値
     }
     // cov_name
-    const char *cov_name;
     if (argc > 5) {
       cov_name = argv[5]; // 引数で指定されたカバレッジファイル名を使用
     } else {
