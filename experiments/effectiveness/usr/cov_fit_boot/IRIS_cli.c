@@ -164,7 +164,9 @@ int main(int argc, char * argv[]) {
     // 定数値の前計算
     const size_t buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * 1;
     int count = 0;
-
+    // バッファの効率的な再利用
+    uint64_t *buffer_bios = NULL;
+    buffer_bisos = malloc(buffer_size);
     for (int i = 0; i < BIOS_EXIT; i++) {
       count = i + 1;
 
@@ -184,14 +186,7 @@ int main(int argc, char * argv[]) {
         first_iter = false;
       }
 
-      // バッファの効率的な再利用
-      uint64_t *buffer_bios = NULL;
-      if (i == 0) {
-        buffer_bios = malloc(buffer_size);
-      } else {
-        // 同じサイズなのでreallocは不要、前回のバッファを再利用
-        // 前のイテレーションでfreeしないように修正
-      }
+
       memset(buffer_bios, 0, buffer_size);
 
       // Waits for the end of monitoring
