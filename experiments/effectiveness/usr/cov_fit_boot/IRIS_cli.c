@@ -158,7 +158,7 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MUTATION_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
 
-	system ("mkdir cov");
+    system ("mkdir cov");
 
     /************************ START BIOS MONITORING **********************************/
     // 定数値の前計算
@@ -239,7 +239,10 @@ int main(int argc, char * argv[]) {
     uint64_t *buffer = malloc(boot_buffer_size);
 
     for (int i = 0; i < num_exit; i++) {
-      system("xencov reset");
+      if (i % 100 == 0) {
+        printf("Reset coverage\n");
+        system("xencov reset");
+      }
 
       // 設定
       xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_SET_EXIT_N, gran_exit, NULL);
@@ -264,10 +267,12 @@ int main(int argc, char * argv[]) {
 
       // ループごとにfcloseしない
 
-      // カバレッジの取得
-      printf("Seed recorded: %d\n", i);
-      sprintf(cmd, "xencov read > ./cov/cov_record%d.dat", i);
-      system(cmd);
+      if (i % 100 == 0) {
+        // カバレッジの取得
+        printf("Seed recorded: %d\n", i);
+        sprintf(cmd, "xencov read > ./cov/cov_record%d.dat", i);
+        system(cmd);
+      }
     }
 
     // ループ終了後に一度だけclose
@@ -433,8 +438,9 @@ int main(int argc, char * argv[]) {
           // 短いスリープを追加してCPU使用率を抑える
           usleep(1000); // 1ミリ秒待機
         }
+      if (i % 100 == 0) {
         system("xencov reset");
-
+      }
         // Seed injection
         res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_MUTATION_START_NEW_ITERATION_NO_BLOCKING,
                              dim_buffer, buffer_inject);
@@ -444,8 +450,10 @@ int main(int argc, char * argv[]) {
         while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
           usleep(1000);
         }
+      if (i % 100 == 0) {
         snprintf(cmd, sizeof(cmd), "xencov read > ./cov/cov_replay%d.dat", j);
         system(cmd);
+      }
       } else {
         printf("SEED破棄: #%d, 理由: %s\n", j, exit_reason_name[exit_reason]);
       }
