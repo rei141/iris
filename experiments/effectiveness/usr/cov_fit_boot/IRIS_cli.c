@@ -438,7 +438,7 @@ int main(int argc, char * argv[]) {
           // 短いスリープを追加してCPU使用率を抑える
           usleep(1000); // 1ミリ秒待機
         }
-      if (i % 100 == 0) {
+      if (j % 100 == 0) {
         system("xencov reset");
       }
         // Seed injection
@@ -450,7 +450,7 @@ int main(int argc, char * argv[]) {
         while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
           usleep(1000);
         }
-      if (i % 100 == 0) {
+      if (j % 100 == 0) {
         snprintf(cmd, sizeof(cmd), "xencov read > ./cov/cov_replay%d.dat", j);
         system(cmd);
       }
