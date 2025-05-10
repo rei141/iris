@@ -226,9 +226,9 @@ int main(int argc, char * argv[]) {
         printf("BIOS exit: #%d\n", i);
       }
 
-      free(buffer_bios);
 
     }
+    free(buffer_bios);
 
     // Save a VM snapshot at end of BIOS
     sprintf(cmd, "xl save -c hvm_guest ./guest_snap ./hvm_configuration.cfg");
