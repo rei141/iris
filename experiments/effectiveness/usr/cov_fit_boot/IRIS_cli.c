@@ -204,10 +204,10 @@ int main(int argc, char * argv[]) {
 
       // Waits for the end of monitoring
       res = 0;
-      while (res != 1) {
-        nanosleep( & tim, & tim2);
+      // while (res != 1) {
+      //   nanosleep( & tim, & tim2);
         res = xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_CHECK, 0, NULL);
-      }
+      // }
 
       // Reads monitored buffer
       res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MONITORING_STOP, BUFFER_DIM_FACTOR * 1, buffer_bios);
@@ -264,10 +264,10 @@ int main(int argc, char * argv[]) {
 
       // Wait for monitoring to complete
       res = 0;
-      while (res != 1) {
-        nanosleep(&tim, &tim2);
+      // while (res != 1) {
+      //   nanosleep(&tim, &tim2);
         res = xc_vmcs_fuzzing(pxch, 0, VMCS_BOOT_MONITORING_CHECK, 0, NULL);
-      }
+      // }
 
       // Reuse buffer (avoid malloc/free overhead)
       memset(buffer, 0, boot_buffer_size);
