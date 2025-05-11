@@ -380,7 +380,7 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_DEBUG_MODE_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_SETUP, 0, NULL);
-    system("sudo xl restore ./hvm_configuration.cfg ./guest_snap");
+    system(" xl restore ./hvm_configuration.cfg ./guest_snap");
 
     // バッチ処理ループ
     while (total_processed < num_seeds) {
@@ -478,7 +478,7 @@ int main(int argc, char * argv[]) {
               // 短いスリープを追加してCPU使用率を抑える
               usleep(1000); // 1ミリ秒待機
             }
-            system("sudo xencov reset");
+            system(" xencov reset");
             // Seed injection
             res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_MUTATION_START_NEW_ITERATION_NO_BLOCKING,
                                dim_buffer, buffer_inject);
@@ -489,7 +489,7 @@ int main(int argc, char * argv[]) {
               usleep(1000);
             }
             // use cov_name
-            sprintf(cmd, "sudo xencov read > %s/cov_replay%d.dat",
+            sprintf(cmd, " xencov read > %s/cov_replay%d.dat",
                     cov_name, total_processed + j);
             system(cmd);
           } else {
@@ -518,7 +518,7 @@ int main(int argc, char * argv[]) {
 
     // Destroy the test VM
     printf("Shutting down VM...\n");
-    system("sudo xl destroy hvm_guest");
+    system(" xl destroy hvm_guest");
 
     break;
 }
