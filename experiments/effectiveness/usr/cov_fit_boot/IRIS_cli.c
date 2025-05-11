@@ -343,9 +343,8 @@ int main(int argc, char * argv[]) {
     free(seeds);
     break;
   }
-
   case 'm': {
-    unsigned int num_seeds = atoi(argv[2]); // Num of seeds to inject
+    unsigned int num_seeds = atoi(argv[2]); // 一度に処理するシード数
     int dom_id = atoi(argv[3]);
     FILE *fp;
     char cmd[100]; // Enough buffer in fixed size
@@ -367,42 +366,13 @@ int main(int argc, char * argv[]) {
 
     printf("Using seed file: %s\n", file_name);
 
-    // Reading seeds to be injected
-    seeds_t seeds_data = {0}; // スタック上に確保し初期化
-    seeds_t *seeds = &seeds_data;
-
-    // サイズを事前計算し1回だけメモリ確保
-    const size_t buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * num_seeds;
-    uint64_t *buffer = malloc(buffer_size);
-    if (!buffer) {
-      fprintf(stderr, "Memory allocation error\n");
-      return -1;
-    }
-    memset(buffer, 0, buffer_size);
+    // 一度に処理するシード数を定義 (デフォルトは指定されたnum_seedsか1000の小さい方)
+    const unsigned int BATCH_SIZE = (num_seeds < 1000) ? num_seeds : 1000;
+    unsigned int total_processed = 0;
 
     if ((fp = fopen(file_name, "r")) == NULL) {
       fprintf(stderr, "Cannot open file: %s\n", file_name);
-      free(buffer);
       return -1;
-    }
-
-    // 効率的なファイル読み込み
-    int size_buffer = 0;
-    while (size_buffer < BUFFER_DIM_FACTOR * num_seeds &&
-           fscanf(fp, "%" PRIx64 "\n", &buffer[size_buffer]) == 1) {
-      size_buffer++;
-    }
-    fclose(fp);
-
-    // Parse raw seeds from file (MUTATION MODE discards vmwrites)
-    if (raw_to_seeds(size_buffer, buffer, seeds, MUTATION_MODE) != 0) {
-      fprintf(stderr, "Seed parse error\n");
-      free(buffer);
-      return -1;
-    }
-
-    if (seeds->size != num_seeds) {
-      printf("Warning: The number of seeds does not match: %lu vs %u\n", seeds->size, num_seeds);
     }
 
     // Create a test VM in MUTATION MODE from a snapshot
@@ -410,82 +380,137 @@ int main(int argc, char * argv[]) {
     xc_vmcs_fuzzing(pxch, 0, VMCS_NON_BLOCKING_MODE_ENABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, 0, VMCS_DEBUG_MODE_DISABLE, 0, NULL);
     xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_SETUP, 0, NULL);
-    system("xl restore ./hvm_configuration.cfg ./guest_snap");
+    system("sudo xl restore ./hvm_configuration.cfg ./guest_snap");
 
-    // 注入バッファを1回だけ確保し再利用
-    uint64_t *buffer_inject = NULL;
-    size_t max_buffer_size = 0;
+    // バッチ処理ループ
+    while (total_processed < num_seeds) {
+        // 現在のバッチサイズを計算（残りが少ない場合は残り全部）
+        unsigned int current_batch = (num_seeds - total_processed < BATCH_SIZE) ?
+                                    (num_seeds - total_processed) : BATCH_SIZE;
 
-    // Foreach seed - 事前に最大バッファサイズを計算
-    for (int j = 0; j < seeds->size; j++) {
-      size_t current_size = seeds->seeds_items[j].size * 3;
-      if (current_size > max_buffer_size) {
-        max_buffer_size = current_size;
-      }
-    }
+        printf("Processing batch: %u seeds (total processed: %u/%u)\n",
+               current_batch, total_processed, num_seeds);
 
-    buffer_inject = malloc(sizeof(uint64_t) * max_buffer_size);
-    if (!buffer_inject) {
-      fprintf(stderr, "Memory allocation error for injection buffer\n");
-      free(buffer);
-      return -1;
-    }
+        // バッチ用のメモリ確保
+        seeds_t seeds_data = {0}; // スタック上に確保し初期化
+        seeds_t *seeds = &seeds_data;
 
-    printf("Starting seed injection...\n");
-    // Foreach seed
-    for (int j = 0; j < seeds->size; j++) {
-      int dim_buffer = seeds->seeds_items[j].size * 3;
-      uint64_t exit_reason = 0;
-      int count = 0;
+        // バッチ用のバッファサイズを計算
+        const size_t buffer_size = sizeof(uint64_t) * BUFFER_DIM_FACTOR * current_batch;
+        uint64_t *buffer = malloc(buffer_size);
+        if (!buffer) {
+          fprintf(stderr, "Memory allocation error\n");
+          fclose(fp);
+          return -1;
+        }
+        memset(buffer, 0, buffer_size);
 
-      // 1回だけ確保したバッファを再利用
-      memset(buffer_inject, 0, sizeof(uint64_t) * dim_buffer);
-
-      for (int k = 0; k < seeds->seeds_items[j].size; k++) {
-        if (seeds->seeds_items[j].seed_items[k].field == 0x00004402) {
-          exit_reason = seeds->seeds_items[j].seed_items[k].value;
+        // 効率的なファイル読み込み
+        int size_buffer = 0;
+        while (size_buffer < BUFFER_DIM_FACTOR * current_batch &&
+               fscanf(fp, "%" PRIx64 "\n", &buffer[size_buffer]) == 1) {
+          size_buffer++;
         }
 
-        buffer_inject[count] = seeds->seeds_items[j].seed_items[k].field;
-        buffer_inject[count + 1] = seeds->seeds_items[j].seed_items[k].value;
-        buffer_inject[count + 2] = seeds->seeds_items[j].seed_items[k].type;
-        count += 3;
-      }
-
-      // Filter EPT MISCONFIG
-      if (exit_reason != 49 && exit_reason != 12) {
-        printf("SEED injection: #%d, Seed ID #%lu\n", j, seeds->seeds_items[j].id);
-
-        // Waiting for the pending exit and reset coverage
-        while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
-          // 短いスリープを追加してCPU使用率を抑える
-          usleep(1000); // 1ミリ秒待機
+        // ファイルの終わりに達したか確認
+        if (size_buffer == 0) {
+            printf("Reached end of file after processing %u seeds.\n", total_processed);
+            free(buffer);
+            break;
         }
-        system("xencov reset");
-        // Seed injection
-        res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_MUTATION_START_NEW_ITERATION_NO_BLOCKING,
-                             dim_buffer, buffer_inject);
-        printf("Mutation result: %d\n", res);
 
-        // Waiting for the end of exit and retrieve coverage
-        while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
-          usleep(1000);
+        // Parse raw seeds from file (MUTATION MODE discards vmwrites)
+        if (raw_to_seeds(size_buffer, buffer, seeds, MUTATION_MODE) != 0) {
+          fprintf(stderr, "Seed parse error\n");
+          free(buffer);
+          fclose(fp);
+          return -1;
         }
-        // use cov_name
-        sprintf(cmd, "xencov read > %s/cov_replay%d.dat", cov_name, j);
-        system(cmd);
-      } else {
-        printf("Discarding seed: #%d, Reason: %s\n", j, exit_reason_name[exit_reason]);
-      }
+
+        // 注入バッファを1回だけ確保し再利用
+        uint64_t *buffer_inject = NULL;
+        size_t max_buffer_size = 0;
+
+        // 事前に最大バッファサイズを計算
+        for (int j = 0; j < seeds->size; j++) {
+          size_t current_size = seeds->seeds_items[j].size * 3;
+          if (current_size > max_buffer_size) {
+            max_buffer_size = current_size;
+          }
+        }
+
+        buffer_inject = malloc(sizeof(uint64_t) * max_buffer_size);
+        if (!buffer_inject) {
+          fprintf(stderr, "Memory allocation error for injection buffer\n");
+          free(buffer);
+          fclose(fp);
+          return -1;
+        }
+
+        printf("Starting seed injection for this batch...\n");
+        // Foreach seed in this batch
+        for (int j = 0; j < seeds->size; j++) {
+          int dim_buffer = seeds->seeds_items[j].size * 3;
+          uint64_t exit_reason = 0;
+          int count = 0;
+
+          // 1回だけ確保したバッファを再利用
+          memset(buffer_inject, 0, sizeof(uint64_t) * dim_buffer);
+
+          for (int k = 0; k < seeds->seeds_items[j].size; k++) {
+            if (seeds->seeds_items[j].seed_items[k].field == 0x00004402) {
+              exit_reason = seeds->seeds_items[j].seed_items[k].value;
+            }
+
+            buffer_inject[count] = seeds->seeds_items[j].seed_items[k].field;
+            buffer_inject[count + 1] = seeds->seeds_items[j].seed_items[k].value;
+            buffer_inject[count + 2] = seeds->seeds_items[j].seed_items[k].type;
+            count += 3;
+          }
+
+          // Filter EPT MISCONFIG
+          if (exit_reason != 49 && exit_reason != 12) {
+            printf("SEED injection: #%d (batch: %u), Seed ID #%lu\n",
+                   j, total_processed / BATCH_SIZE, seeds->seeds_items[j].id);
+
+            // Waiting for the pending exit and reset coverage
+            while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
+              // 短いスリープを追加してCPU使用率を抑える
+              usleep(1000); // 1ミリ秒待機
+            }
+            system("sudo xencov reset");
+            // Seed injection
+            res = xc_vmcs_fuzzing(pxch, dom_id, VMCS_MUTATION_START_NEW_ITERATION_NO_BLOCKING,
+                               dim_buffer, buffer_inject);
+            printf("Mutation result: %d\n", res);
+
+            // Waiting for the end of exit and retrieve coverage
+            while (xc_vmcs_fuzzing(pxch, dom_id, VMCS_BOOT_MUTATION_CHECK, 0, NULL) == 1) {
+              usleep(1000);
+            }
+            // use cov_name
+            sprintf(cmd, "sudo xencov read > %s/cov_replay%d.dat",
+                    cov_name, total_processed + j);
+            system(cmd);
+          } else {
+            printf("Discarding seed: #%d (batch: %u), Reason: %s\n",
+                   j, total_processed / BATCH_SIZE, exit_reason_name[exit_reason]);
+          }
+        }
+
+        // このバッチの処理が終わったらリソース解放
+        for (int i = 0; i < seeds->size; i++) {
+          free(seeds->seeds_items[i].seed_items);
+        }
+        free(seeds->seeds_items);
+        free(buffer);
+        free(buffer_inject);
+
+        // 処理済みシード数を更新
+        total_processed += seeds->size;
     }
 
-    // リソース解放
-    for (int i = 0; i < seeds->size; i++) {
-      free(seeds->seeds_items[i].seed_items);
-    }
-    free(seeds->seeds_items);
-    free(buffer);
-    free(buffer_inject);
+    fclose(fp);
 
     printf("Disabling mutation mode...\n");
     // Disable mutation mode
@@ -493,10 +518,10 @@ int main(int argc, char * argv[]) {
 
     // Destroy the test VM
     printf("Shutting down VM...\n");
-    system("xl destroy hvm_guest");
+    system("sudo xl destroy hvm_guest");
 
     break;
-  }
+}
 
   default: {
     printf("This mode is not available \n");
